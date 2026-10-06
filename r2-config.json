@@ -1,0 +1,414 @@
+{
+  "system": {
+    "host-name": "R2",
+    "root-authentication": {
+      "encrypted-password": "$1$4TkbZDtp$6E8C6Bg7K6gnHR31XnJjl0"
+    },
+    "services": {
+      "ssh": true,
+      "dhcp-local-server": {
+        "group": {
+          "USERLAN1": {
+            "interface": "ge-0/0/4.0"
+          }
+        }
+      }
+    }
+  },
+  "interfaces": {
+    "ge-0/0/1": {
+      "description": "Lan10 - R5 - OSPF p2p",
+      "unit": {
+        "0": {
+          "family": {
+            "inet": {
+              "address": "10.10.12.2/28"
+            }
+          }
+        }
+      }
+    },
+    "ge-0/0/2": {
+      "description": "Lan5 - R4 - OSPF broadcast",
+      "unit": {
+        "0": {
+          "family": {
+            "inet": {
+              "address": "10.10.10.1/28"
+            }
+          }
+        }
+      }
+    },
+    "ge-0/0/3": {
+      "description": "DMZ - PC3 local web server",
+      "unit": {
+        "0": {
+          "family": {
+            "inet": {
+              "address": "192.168.12.1/24"
+            }
+          }
+        }
+      }
+    },
+    "ge-0/0/4": {
+      "description": "USERLAN1 - PC5",
+      "unit": {
+        "0": {
+          "family": {
+            "inet": {
+              "address": "192.168.13.1/24"
+            }
+          }
+        }
+      }
+    },
+    "ge-0/0/5": {
+      "description": "LabLan - internet gateway 10.56.16.1 - untrust",
+      "unit": {
+        "0": {
+          "family": {
+            "inet": {
+              "address": "10.56.16.85/22"
+            }
+          }
+        }
+      }
+    },
+    "lo0": {
+      "unit": {
+        "0": {
+          "family": {
+            "inet": {
+              "address": "192.168.100.1/32"
+            }
+          }
+        }
+      }
+    }
+  },
+  "routing-options": {
+    "static": {
+      "route": [
+        "0.0.0.0/0",
+        "next-hop",
+        "10.56.16.1"
+      ]
+    },
+    "router-id": "2.2.2.2"
+  },
+  "protocols": {
+    "ospf": {
+      "export": [
+        "my-route-to-USERLAN1",
+        "my-route-to-DMZ",
+        "my-default-static-route-to-internet"
+      ],
+      "area": {
+        "0.0.0.0": {
+          "interface": {
+            "lo0.0": true,
+            "ge-0/0/2.0": {
+              "metric": 1
+            },
+            "ge-0/0/1.0": {
+              "interface-type": "p2p",
+              "metric": 10
+            }
+          }
+        }
+      }
+    }
+  },
+  "policy-options": {
+    "policy-statement": {
+      "my-default-static-route-to-internet": {
+        "term": {
+          "accept-my-default-route": {
+            "from": {
+              "protocol": "static",
+              "route-filter": {
+                "0.0.0.0/0": "exact"
+              }
+            },
+            "then": "accept"
+          }
+        }
+      },
+      "my-route-to-DMZ": {
+        "term": {
+          "accept-DMZ": {
+            "from": {
+              "route-filter": {
+                "192.168.12.0/24": "exact"
+              }
+            },
+            "then": "accept"
+          }
+        }
+      },
+      "my-route-to-USERLAN1": {
+        "term": {
+          "accept-USERLAN1": {
+            "from": {
+              "route-filter": {
+                "192.168.13.0/24": "exact"
+              }
+            },
+            "then": "accept"
+          }
+        }
+      }
+    }
+  },
+  "security": {
+    "nat": {
+      "source": {
+        "rule-set": {
+          "lab-to-untrust": {
+            "from": {
+              "zone": "lab"
+            },
+            "to": {
+              "zone": "untrust"
+            },
+            "rule": {
+              "rule-any-to-any": {
+                "match": {
+                  "source-address": "0.0.0.0/0",
+                  "destination-address": "0.0.0.0/0"
+                },
+                "then": {
+                  "source-nat": [
+                    "interface"
+                  ]
+                }
+              }
+            }
+          },
+          "DMZ-to-untrust": {
+            "from": {
+              "zone": "DMZ"
+            },
+            "to": {
+              "zone": "untrust"
+            },
+            "rule": {
+              "DMZ-any-to-any": {
+                "match": {
+                  "source-address": "0.0.0.0/0",
+                  "destination-address": "0.0.0.0/0"
+                },
+                "then": {
+                  "source-nat": [
+                    "interface"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "destination": {
+        "pool": {
+          "WebServer": {
+            "address": "192.168.12.55/32"
+          }
+        },
+        "rule-set": {
+          "untrust-to-WebServer": {
+            "from": {
+              "zone": "untrust"
+            },
+            "rule": {
+              "http-to-WebServer": {
+                "match": {
+                  "destination-address": "10.56.16.85/32",
+                  "destination-port": [
+                    "80"
+                  ]
+                },
+                "then": {
+                  "destination-nat": {
+                    "pool": [
+                      "WebServer"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "zones": {
+      "security-zone": {
+        "lab": {
+          "host-inbound-traffic": {
+            "system-services": [
+              "ping"
+            ],
+            "protocols": [
+              "ospf"
+            ]
+          },
+          "interfaces": {
+            "ge-0/0/1.0": true,
+            "ge-0/0/2.0": true,
+            "ge-0/0/4.0": {
+              "host-inbound-traffic": {
+                "system-services": [
+                  "dhcp",
+                  "ping"
+                ]
+              }
+            }
+          }
+        },
+        "DMZ": {
+          "address-book": {
+            "address": {
+              "WebServer": "192.168.12.55/32"
+            }
+          },
+          "interfaces": {
+            "ge-0/0/3.0": {
+              "host-inbound-traffic": {
+                "system-services": [
+                  "ping"
+                ]
+              }
+            }
+          }
+        },
+        "untrust": {
+          "interfaces": {
+            "ge-0/0/5.0": {
+              "host-inbound-traffic": {
+                "system-services": [
+                  "ping",
+                  "ssh"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "policies": {
+      "from-zone lab to-zone lab": {
+        "policy": {
+          "allow-lab": {
+            "match": {
+              "source-address": "any",
+              "destination-address": "any",
+              "application": "any"
+            },
+            "then": [
+              "permit"
+            ]
+          }
+        }
+      },
+      "from-zone lab to-zone untrust": {
+        "policy": {
+          "internet-access": {
+            "match": {
+              "source-address": "any",
+              "destination-address": "any",
+              "application": "any"
+            },
+            "then": [
+              "permit"
+            ]
+          }
+        }
+      },
+      "from-zone lab to-zone DMZ": {
+        "policy": {
+          "lab-to-DMZ": {
+            "match": {
+              "source-address": "any",
+              "destination-address": "any",
+              "application": "any"
+            },
+            "then": [
+              "permit"
+            ]
+          }
+        }
+      },
+      "from-zone DMZ to-zone untrust": {
+        "policy": {
+          "DMZ-internet-access": {
+            "match": {
+              "source-address": "any",
+              "destination-address": "any",
+              "application": "any"
+            },
+            "then": [
+              "permit"
+            ]
+          }
+        }
+      },
+      "from-zone DMZ to-zone lab": {
+        "policy": {
+          "deny-DMZ-to-lab": {
+            "match": {
+              "source-address": "any",
+              "destination-address": "any",
+              "application": "any"
+            },
+            "then": [
+              "deny"
+            ]
+          }
+        }
+      },
+      "from-zone untrust to-zone DMZ": {
+        "policy": {
+          "WebServerPolicy": {
+            "match": {
+              "source-address": "any",
+              "destination-address": "WebServer",
+              "application": "junos-http"
+            },
+            "then": [
+              "permit"
+            ]
+          }
+        }
+      }
+    }
+  },
+  "access": {
+    "address-assignment": {
+      "pool": {
+        "USERLAN1": {
+          "family": {
+            "inet": {
+              "network": "192.168.13.0/24",
+              "range": {
+                "USERS": {
+                  "low": "192.168.13.10",
+                  "high": "192.168.13.20"
+                }
+              },
+              "dhcp-attributes": {
+                "maximum-lease-time": 3600,
+                "name-server": [
+                  "8.8.8.8"
+                ],
+                "router": [
+                  "192.168.13.1"
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
