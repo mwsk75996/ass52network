@@ -47,7 +47,7 @@ interfaces {
         description "LabLan - internet gateway 10.56.16.1 - untrust";
         unit 0 {
             family inet {
-                address 10.56.16.80/22;
+                address 10.56.16.85/22;
             }
         }
     }
