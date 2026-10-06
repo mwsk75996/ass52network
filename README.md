@@ -19,6 +19,10 @@ Nyt i 52 er, at USERLAN'erne får internetadgang via R2:
 - Export-policyen `my-default-static-route-to-internet` (`protocol static` + `route-filter 0.0.0.0/0 exact`) redistribuerer default routen ind i OSPF. R4 og R5 lærer den derfor som en OSPF external-rute uden selv at blive ændret.
 - Source NAT (`interface`) fra zone `lab` til `untrust` skjuler de private net bag `10.56.16.85`, og en security policy tillader `lab` → `untrust`.
 - R2 er DHCP-server for USERLAN1 på `ge-0/0/4`: PC5 får en adresse i `192.168.13.10–20` med gateway `192.168.13.1` og DNS `8.8.8.8`.
+- DMZ på R2's `ge-0/0/3` (`192.168.12.0/24`) i sin egen security-zone `DMZ` med PC3 som Local Web Server på `192.168.12.55` (statisk, gateway `192.168.12.1`):
+  - DMZ-nettet eksporteres i OSPF med `my-route-to-DMZ` (`route-filter 192.168.12.0/24 exact`), så alle USERLAN'erne kan nå webserveren.
+  - Destination NAT: `10.56.16.85:80` fra LabLan sendes videre til `192.168.12.55:80`, og policyen `untrust` → `DMZ` tillader kun `junos-http` til webserveren.
+  - DMZ'en har internet via source NAT, `lab` → `DMZ` er tilladt, men `DMZ` → `lab` er afvist. En kompromitteret webserver kan altså ikke nå brugernes net.
 
 ## Adresser (LLD)
 
@@ -26,6 +30,7 @@ Nyt i 52 er, at USERLAN'erne får internetadgang via R2:
 |---|---|---|---|
 | R2 | ge-0/0/1 | Lan10 10.10.12.0/28 | 10.10.12.2/28 |
 | R2 | ge-0/0/2 | Lan5 10.10.10.0/28 | 10.10.10.1/28 |
+| R2 | ge-0/0/3 | DMZ 192.168.12.0/24 | 192.168.12.1/24 (PC3 webserver = .55) |
 | R2 | ge-0/0/4 | USERLAN1 192.168.13.0/24 | 192.168.13.1/24 (PC5 = DHCP .10–.20) |
 | R2 | ge-0/0/5 | LabLan 10.56.16.0/22 | 10.56.16.85/22 (gateway 10.56.16.1) |
 | R2 | lo0 | – | 192.168.100.1/32 |
@@ -38,7 +43,7 @@ Nyt i 52 er, at USERLAN'erne får internetadgang via R2:
 | R5 | ge-0/0/4 | USERLAN3 192.168.15.0/24 | 192.168.15.1/24 (PC11 = .5) |
 | R5 | lo0 | – | 192.168.100.3/32 |
 
-PC10 og PC11 har statiske adresser med routerens `.1` som default gateway.
+PC3, PC10 og PC11 har statiske adresser med routerens `.1` som default gateway.
 
 ## Indlæsning
 
@@ -57,6 +62,9 @@ Indsæt hele filen, afslut med `Ctrl+D`, og kontrollér med `show | compare` og 
 ```text
 R2> show route 0.0.0.0/0
 R2> show dhcp server binding
+R2> show security nat destination rule all
+PC11$ curl http://192.168.12.55          # webserver internt via OSPF
+LabLan$ curl http://10.56.16.85          # webserver udefra via destination NAT
 R4> show route
 R4> show route 0.0.0.0/0 detail
 R4> show ospf database external

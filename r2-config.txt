@@ -1,7 +1,9 @@
 ## R2 - Assignment 52 - complete Junos configuration; load override terminal
 ## Based on Assignment 51. New: ge-0/0/5 to LabLan, static default route to
 ## 10.56.16.1 exported into OSPF, untrust zone and source NAT for internet access,
-## DHCP server on ge-0/0/4 hands out 192.168.13.10-20 to PC5 (USERLAN1).
+## DHCP server on ge-0/0/4 hands out 192.168.13.10-20 to PC5 (USERLAN1),
+## DMZ on ge-0/0/3 with PC3 local web server 192.168.12.55, published on
+## 10.56.16.85:80 with destination NAT.
 ## Root password hash preserved from Assignment 49/50.
 
 system {
@@ -32,6 +34,14 @@ interfaces {
         unit 0 {
             family inet {
                 address 10.10.10.1/28;
+            }
+        }
+    }
+    ge-0/0/3 {
+        description "DMZ - PC3 local web server";
+        unit 0 {
+            family inet {
+                address 192.168.12.1/24;
             }
         }
     }
@@ -69,6 +79,7 @@ routing-options {
 protocols {
     ospf {
         export my-route-to-USERLAN1;
+        export my-route-to-DMZ;
         export my-default-static-route-to-internet;
         area 0.0.0.0 {
             interface lo0.0;
@@ -88,6 +99,14 @@ policy-options {
             from {
                 protocol static;
                 route-filter 0.0.0.0/0 exact;
+            }
+            then accept;
+        }
+    }
+    policy-statement my-route-to-DMZ {
+        term accept-DMZ {
+            from {
+                route-filter 192.168.12.0/24 exact;
             }
             then accept;
         }
@@ -120,6 +139,44 @@ security {
                     }
                 }
             }
+            rule-set DMZ-to-untrust {
+                from zone DMZ;
+                to zone untrust;
+                rule rule-any-to-any {
+                    match {
+                        source-address 0.0.0.0/0;
+                        destination-address 0.0.0.0/0;
+                    }
+                    then {
+                        source-nat {
+                            interface;
+                        }
+                    }
+                }
+            }
+        }
+        destination {
+            pool WebServer {
+                address 192.168.12.55/32;
+            }
+            rule-set untrust-to-WebServer {
+                from zone untrust;
+                rule http-to-WebServer {
+                    match {
+                        destination-address 10.56.16.85/32;
+                        destination-port {
+                            80;
+                        }
+                    }
+                    then {
+                        destination-nat {
+                            pool {
+                                WebServer;
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
     zones {
@@ -140,6 +197,20 @@ security {
                     host-inbound-traffic {
                         system-services {
                             dhcp;
+                            ping;
+                        }
+                    }
+                }
+            }
+        }
+        security-zone DMZ {
+            address-book {
+                address WebServer 192.168.12.55/32;
+            }
+            interfaces {
+                ge-0/0/3.0 {
+                    host-inbound-traffic {
+                        system-services {
                             ping;
                         }
                     }
@@ -178,6 +249,54 @@ security {
                     source-address any;
                     destination-address any;
                     application any;
+                }
+                then {
+                    permit;
+                }
+            }
+        }
+        from-zone lab to-zone DMZ {
+            policy lab-to-DMZ {
+                match {
+                    source-address any;
+                    destination-address any;
+                    application any;
+                }
+                then {
+                    permit;
+                }
+            }
+        }
+        from-zone DMZ to-zone untrust {
+            policy DMZ-internet-access {
+                match {
+                    source-address any;
+                    destination-address any;
+                    application any;
+                }
+                then {
+                    permit;
+                }
+            }
+        }
+        from-zone DMZ to-zone lab {
+            policy deny-DMZ-to-lab {
+                match {
+                    source-address any;
+                    destination-address any;
+                    application any;
+                }
+                then {
+                    deny;
+                }
+            }
+        }
+        from-zone untrust to-zone DMZ {
+            policy WebServerPolicy {
+                match {
+                    source-address any;
+                    destination-address WebServer;
+                    application junos-http;
                 }
                 then {
                     permit;
