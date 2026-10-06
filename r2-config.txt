@@ -142,7 +142,7 @@ security {
             rule-set DMZ-to-untrust {
                 from zone DMZ;
                 to zone untrust;
-                rule rule-any-to-any {
+                rule DMZ-any-to-any {
                     match {
                         source-address 0.0.0.0/0;
                         destination-address 0.0.0.0/0;
