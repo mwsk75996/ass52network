@@ -1,0 +1,108 @@
+## R5 - Assignment 51 - complete Junos configuration; load override terminal
+## USERLAN3 (192.168.15.0/24) is exported into OSPF with a route-filter.
+## Root password hash preserved from Assignment 49/50.
+
+system {
+    host-name R5;
+    root-authentication {
+        encrypted-password "$1$iIB5kXWe$ndYfMnY.TygiAYOujEkBH1";
+    }
+    services {
+        ssh;
+    }
+}
+interfaces {
+    ge-0/0/2 {
+        description "Lan10 - R2 - OSPF p2p";
+        unit 0 {
+            family inet {
+                address 10.10.12.1/28;
+            }
+        }
+    }
+    ge-0/0/3 {
+        description "Lan6 - R4 - OSPF p2p";
+        unit 0 {
+            family inet {
+                address 10.10.11.1/28;
+            }
+        }
+    }
+    ge-0/0/4 {
+        description "USERLAN3 - PC11";
+        unit 0 {
+            family inet {
+                address 192.168.15.1/24;
+            }
+        }
+    }
+    lo0 {
+        unit 0 {
+            family inet {
+                address 192.168.100.3/32;
+            }
+        }
+    }
+}
+routing-options {
+    router-id 5.5.5.5;
+}
+protocols {
+    ospf {
+        export my-route-to-USERLAN3;
+        area 0.0.0.0 {
+            interface lo0.0;
+            interface ge-0/0/2.0 {
+                interface-type p2p;
+                metric 10;
+            }
+            interface ge-0/0/3.0 {
+                interface-type p2p;
+                metric 1;
+            }
+        }
+    }
+}
+policy-options {
+    policy-statement my-route-to-USERLAN3 {
+        term accept-USERLAN3 {
+            from {
+                route-filter 192.168.15.0/24 exact;
+            }
+            then accept;
+        }
+    }
+}
+security {
+    zones {
+        security-zone lab {
+            host-inbound-traffic {
+                system-services {
+                    ping;
+                }
+                protocols {
+                    ospf;
+                }
+            }
+            interfaces {
+                ge-0/0/2.0;
+                ge-0/0/3.0;
+                ge-0/0/4.0;
+            }
+        }
+    }
+    policies {
+        from-zone lab to-zone lab {
+            policy allow-lab {
+                match {
+                    source-address any;
+                    destination-address any;
+                    application any;
+                }
+                then {
+                    permit;
+                }
+            }
+        }
+    }
+}

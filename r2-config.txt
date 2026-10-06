@@ -1,0 +1,210 @@
+## R2 - Assignment 52 - complete Junos configuration; load override terminal
+## Based on Assignment 51. New: ge-0/0/5 to LabLan, static default route to
+## 10.56.16.1 exported into OSPF, untrust zone and source NAT for internet access,
+## DHCP server on ge-0/0/4 hands out 192.168.13.10-20 to PC5 (USERLAN1).
+## Root password hash preserved from Assignment 49/50.
+
+system {
+    host-name R2;
+    root-authentication {
+        encrypted-password "$1$4TkbZDtp$6E8C6Bg7K6gnHR31XnJjl0";
+    }
+    services {
+        ssh;
+        dhcp-local-server {
+            group USERLAN1 {
+                interface ge-0/0/4.0;
+            }
+        }
+    }
+}
+interfaces {
+    ge-0/0/1 {
+        description "Lan10 - R5 - OSPF p2p";
+        unit 0 {
+            family inet {
+                address 10.10.12.2/28;
+            }
+        }
+    }
+    ge-0/0/2 {
+        description "Lan5 - R4 - OSPF broadcast";
+        unit 0 {
+            family inet {
+                address 10.10.10.1/28;
+            }
+        }
+    }
+    ge-0/0/4 {
+        description "USERLAN1 - PC5";
+        unit 0 {
+            family inet {
+                address 192.168.13.1/24;
+            }
+        }
+    }
+    ge-0/0/5 {
+        description "LabLan - internet gateway 10.56.16.1 - untrust";
+        unit 0 {
+            family inet {
+                address 10.56.16.80/22;
+            }
+        }
+    }
+    lo0 {
+        unit 0 {
+            family inet {
+                address 192.168.100.1/32;
+            }
+        }
+    }
+}
+routing-options {
+    static {
+        /* Default route to the internet gateway (R3 on LabLan) */
+        route 0.0.0.0/0 next-hop 10.56.16.1;
+    }
+    router-id 2.2.2.2;
+}
+protocols {
+    ospf {
+        export my-route-to-USERLAN1;
+        export my-default-static-route-to-internet;
+        area 0.0.0.0 {
+            interface lo0.0;
+            interface ge-0/0/2.0 {
+                metric 1;
+            }
+            interface ge-0/0/1.0 {
+                interface-type p2p;
+                metric 10;
+            }
+        }
+    }
+}
+policy-options {
+    policy-statement my-default-static-route-to-internet {
+        term accept-my-default-route {
+            from {
+                protocol static;
+                route-filter 0.0.0.0/0 exact;
+            }
+            then accept;
+        }
+    }
+    policy-statement my-route-to-USERLAN1 {
+        term accept-USERLAN1 {
+            from {
+                route-filter 192.168.13.0/24 exact;
+            }
+            then accept;
+        }
+    }
+}
+security {
+    nat {
+        source {
+            rule-set lab-to-untrust {
+                from zone lab;
+                to zone untrust;
+                rule rule-any-to-any {
+                    match {
+                        source-address 0.0.0.0/0;
+                        destination-address 0.0.0.0/0;
+                    }
+                    then {
+                        source-nat {
+                            /* Use egress interface source address */
+                            interface;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    zones {
+        security-zone lab {
+            host-inbound-traffic {
+                system-services {
+                    ping;
+                }
+                protocols {
+                    ospf;
+                }
+            }
+            interfaces {
+                ge-0/0/1.0;
+                ge-0/0/2.0;
+                /* Interface-level host-inbound overrides the zone level, so ping is repeated */
+                ge-0/0/4.0 {
+                    host-inbound-traffic {
+                        system-services {
+                            dhcp;
+                            ping;
+                        }
+                    }
+                }
+            }
+        }
+        security-zone untrust {
+            interfaces {
+                ge-0/0/5.0 {
+                    host-inbound-traffic {
+                        system-services {
+                            ping;
+                            ssh;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    policies {
+        from-zone lab to-zone lab {
+            policy allow-lab {
+                match {
+                    source-address any;
+                    destination-address any;
+                    application any;
+                }
+                then {
+                    permit;
+                }
+            }
+        }
+        from-zone lab to-zone untrust {
+            policy internet-access {
+                match {
+                    source-address any;
+                    destination-address any;
+                    application any;
+                }
+                then {
+                    permit;
+                }
+            }
+        }
+    }
+}
+access {
+    address-assignment {
+        pool USERLAN1 {
+            family inet {
+                network 192.168.13.0/24;
+                range USERS {
+                    low 192.168.13.10;
+                    high 192.168.13.20;
+                }
+                dhcp-attributes {
+                    maximum-lease-time 3600;
+                    name-server {
+                        8.8.8.8;
+                    }
+                    router {
+                        192.168.13.1;
+                    }
+                }
+            }
+        }
+    }
+}
